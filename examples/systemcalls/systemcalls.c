@@ -16,8 +16,9 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int result = system(cmd);
 
-    return true;
+    return result == 0;
 }
 
 /**
@@ -58,7 +59,35 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+    pid_t pid = fork(); 
+    if (pid < 0) {  
+        perror("fork");
+        return false;
+    }
 
+    if (pid == 0) {  
+        if (execv(command[0], command) == -1) {
+            perror("execv");
+            exit(EXIT_FAILURE);
+        }
+    } else {  
+        int status;
+        if(waitpid(pid, &status, 0) == -1) {
+            perror("waitpid failed");
+            return false;
+        }
+        
+        if (WIFEXITED(status)) {
+            printf("Child exited with status %d\n", WEXITSTATUS(status));
+            if(status != 0) {
+                return false;
+            }
+        } else {
+            printf("Child did not exit successfully\n");
+            return false;
+
+        }
+    }
     va_end(args);
 
     return true;
@@ -92,6 +121,45 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    pid_t pid = fork();  
+
+    if (pid < 0) {  
+        perror("fork");
+        return false;
+    }
+
+    if (pid == 0) {  
+        int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            perror("dup2");
+            exit(EXIT_FAILURE);
+        }
+
+        close(fd);
+
+        if (execv(command[0], command) == -1) {
+            perror("execv");
+            exit(EXIT_FAILURE);
+        }
+    } else {  // Parent process
+        int status;
+        if(waitpid(pid, &status, 0) == -1) {
+            perror("waitpid failed");
+            return false;
+        }
+
+        if (WIFEXITED(status)) {
+            printf("Child exited with status %d\n", WEXITSTATUS(status));
+        } else {
+            printf("Child did not exit successfully\n");
+            return false;
+        }
+    }
 
     va_end(args);
 
